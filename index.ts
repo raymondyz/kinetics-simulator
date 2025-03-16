@@ -69,7 +69,7 @@ class Vector {
 class Particle {
   formula: string
   color: string
-  radius: number = 10
+  radius: number
 
   pos: Vector
   vel: Vector
@@ -77,11 +77,12 @@ class Particle {
   temperature: number
 
   state: "active" | "cooldown" | "removed" = "active";
-  cooldown: number = 0;
+  cooldownDist: number = 0;
 
-  constructor(formula: string, color: string, pos: Vector, temperature: number, vel: Vector = new Vector(0, 0)) {
+  constructor(formula: string, color: string, radius: number, pos: Vector, temperature: number, vel: Vector = new Vector(0, 0)) {
     this.formula = formula
     this.color = color
+    this.radius = radius
     this.pos = pos
     this.vel = vel
     this.temperature = temperature
@@ -128,14 +129,14 @@ class Particle {
     this.pos = newPos;
     this.vel = newVel;
 
-    // Reduce cooldown
-    if (this.cooldown > 0) {
-      this.cooldown--;
+    // Reduce cooldown distance
+    if (this.cooldownDist > 0) {
+      this.cooldownDist -= this.vel.getMagnitude();
     }
 
     // Set active if cooldown ends
-    if (this.cooldown <= 0 || this.state === "active") {
-      this.cooldown = 0;
+    if (this.cooldownDist <= 0 || this.state === "active") {
+      this.cooldownDist = 0;
       this.state = "active"
     }
   }
@@ -233,7 +234,7 @@ class Reaction {
       const coeff = molFormula.molCoeff;
 
       for (let i = 0; i < coeff; i++) {
-        producedParticles.push(createParticle(formula, reactionLocation, temperature, COOLDOWN))
+        producedParticles.push(createParticle(formula, reactionLocation, temperature, COOLDOWN_DIST))
       }
     }
 
@@ -273,7 +274,7 @@ class Reaction {
       const coeff = molFormula.molCoeff;
 
       for (let i = 0; i < coeff; i++) {
-        producedParticles.push(createParticle(formula, reactionLocation, temperature, COOLDOWN))
+        producedParticles.push(createParticle(formula, reactionLocation, temperature, COOLDOWN_DIST))
       }
     }
 
@@ -282,7 +283,7 @@ class Reaction {
 
 
   // Attepts both fwd and rev rxns, returns products if successful
-  attemptReaction(intersectingParticles: Particle[], particleCreationQueue: Particle[], reactionLocation: Vector, temperature: number): boolean {
+  attemptReaction(intersectingParticles: Particle[], particleCreationQueue: Particle[], temperature: number): boolean {
 
     // Attempt forward reaction
     const fwdConsumed = this.getFwdConsumedParticles(intersectingParticles)
@@ -291,7 +292,7 @@ class Reaction {
       removeParticles(fwdConsumed)
 
       // Add produced particles
-      particleCreationQueue.push(...this.getFwdProducedParticles(reactionLocation, temperature))
+      particleCreationQueue.push(...this.getFwdProducedParticles(getAvgPos(fwdConsumed), temperature))
 
       return true
     }
@@ -303,7 +304,7 @@ class Reaction {
       removeParticles(revConsumed)
 
       // Add produced particles
-      particleCreationQueue.push(...this.getRevProducedParticles(reactionLocation, temperature))
+      particleCreationQueue.push(...this.getRevProducedParticles(getAvgPos(revConsumed), temperature))
 
       return true
     }
@@ -353,15 +354,15 @@ function getRandPos(dimensions: dimensions): Vector {
   return new Vector(getRandInt(0, dimensions.width), getRandInt(0, dimensions.height))
 }
 
-function createParticle(formula: string, pos: Vector, temperature: number, cooldown: number = 0): Particle {
+function createParticle(formula: string, pos: Vector, temperature: number, cooldownDist: number = 0): Particle {
   const speedVec = new Vector(temperature, 0)
   const speedScaler = getRandFloat(1 - MAX_SPEED_SCALER, 1 + MAX_SPEED_SCALER) // Randomize speed
   const angle = getRandFloat(0, 2*Math.PI)
 
-  const particle = new Particle(formula, getParticleColor(formula), pos, temperature, speedVec.getScaled(speedScaler).getRotated(angle))
-  if (cooldown !== 0) {
+  const particle = new Particle(formula, getParticleColor(formula), RADIUS, pos, temperature, speedVec.getScaled(speedScaler).getRotated(angle))
+  if (cooldownDist !== 0) {
     particle.state = "cooldown"
-    particle.cooldown = cooldown  
+    particle.cooldownDist = cooldownDist  
   }
 
   return particle
@@ -375,9 +376,29 @@ function removeParticles(particles: Particle[]): void {
 }
 
 function changeTemperature(particles: Particle[], temperature: number): void {
+  containerTemperature = temperature;
   for (const particle of particles) {
     particle.changeTemperature(temperature)
   }
+}
+
+function getAvgPos(particles: Particle[]): Vector {
+  const length = particles.length
+
+  // Return zero vector if list has no particles
+  if (length === 0) {
+    return new Vector(0, 0)
+  }
+
+  let totalX = 0
+  let totalY = 0
+
+  for (const particle of particles) {
+    totalX += particle.pos.x
+    totalY += particle.pos.y
+  }
+
+  return new Vector(totalX / length, totalY / length)
 }
 
 // ==== TESTING FUNCTIONS ==================================
@@ -390,6 +411,7 @@ function getAvgSpeed(particles: Particle[]): number {
 
   return totalSpeed/particles.length
 }
+
 
 
 // ==================================================================================================
@@ -405,7 +427,8 @@ const CANVAS_DIMENSIONS: dimensions = canvas.getBoundingClientRect();
 
 // ==== CONSTANTS ==================================
 
-const COOLDOWN = 30;
+const RADIUS = 10;
+const COOLDOWN_DIST = 2*RADIUS;
 const MAX_SPEED_SCALER = 0.5; // Between 0 (0 variation), and 1 (100% variation)
 
 // For color and formula name reference
@@ -420,10 +443,12 @@ const particleList: Particle[] = [];
 const particleCreationQueue: Particle[] = []; // Particles waiting to be added
 const reactionList: Reaction[] = [];
 
+// Simulation container parameters
+let containerPaused: boolean = false // Whether simulation is paused
 let containerTemperature: number = 2 // Avg speed
 
 
-for (let i = 0; i < 1; i++) {
+for (let i = 0; i < 10; i++) {
   particleList.push(createParticle("A", new Vector(400, 400), containerTemperature))
 }
 
@@ -443,7 +468,10 @@ function drawFrame(): void {
 }
 
 function updateFrame(): void{
-  drawFrame()
+  // Do nothing if simulation is paused
+  if (containerPaused) {
+    return
+  }
 
   // Add queue particles
   particleList.push(...particleCreationQueue)
@@ -495,7 +523,7 @@ function updateFrame(): void{
 
     // Check available reactions
     for (const reaction of reactionList) {
-      const rxnSuccessful = reaction.attemptReaction(availableParticles, particleCreationQueue, particle1.pos, containerTemperature)
+      const rxnSuccessful = reaction.attemptReaction(availableParticles, particleCreationQueue, containerTemperature)
 
       if (rxnSuccessful) {
         console.log("SUCCESSFUL REACTION")
@@ -505,6 +533,8 @@ function updateFrame(): void{
     }
 
   }
+
+  drawFrame()
 
 }
 
@@ -516,10 +546,39 @@ canvas.addEventListener("mousedown", function (e) {
   const mousePos = getCursorPosition(e);
 
   const particle = createParticle("A", mousePos, containerTemperature)
-  // const particle = new Particle("A", "blue", mousePos, new Vector(1, 0))
-
 
   particleList.push(particle)
-
-  console.log(getAvgSpeed(particleList))
 });
+
+
+
+// ==================================================================================================
+// ==== Testing =====================================================================================
+// ==================================================================================================
+
+
+// ==== TEMPERATURE SLIDER ===============================
+
+var tempSlider: any = document.getElementById("temp-slider");
+
+tempSlider.oninput = function() {
+  const newTemp =  20*(this as any).value
+
+  changeTemperature(particleList, newTemp)
+  changeTemperature(particleCreationQueue, newTemp)
+}
+
+// ==== PAUSE BUTTON ===============================
+
+var pauseButton: any = document.getElementById("pause-button");
+
+pauseButton.onclick = function(){
+  if (containerPaused) {
+    containerPaused = false
+    pauseButton.innerText = "Pause"
+  }
+  else {
+    containerPaused = true
+    pauseButton.innerText = "Unpause"
+  }
+}

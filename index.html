@@ -7,7 +7,24 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <canvas id="myCanvas" width="800" height="800"></canvas>
+    <div class="main-container">
+      <canvas id="myCanvas" width="800" height="800"></canvas>
+      <div class="controls-container">
+        <div class="slidecontainer">
+          <h3>Temperature</h3>
+          <input
+            class="slider"
+            id="temp-slider"
+            type="range"
+            min="0.01"
+            max="1"
+            value="0.5"
+            step="0.01"
+          />
+        </div>
+        <button class="button" id="pause-button">Pause</button>
+      </div>
+    </div>
     <script src="index.js"></script>
   </body>
 </html>

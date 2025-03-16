@@ -43,13 +43,13 @@ var Vector = /** @class */ (function () {
     return Vector;
 }());
 var Particle = /** @class */ (function () {
-    function Particle(formula, color, pos, temperature, vel) {
+    function Particle(formula, color, radius, pos, temperature, vel) {
         if (vel === void 0) { vel = new Vector(0, 0); }
-        this.radius = 10;
         this.state = "active";
-        this.cooldown = 0;
+        this.cooldownDist = 0;
         this.formula = formula;
         this.color = color;
+        this.radius = radius;
         this.pos = pos;
         this.vel = vel;
         this.temperature = temperature;
@@ -88,13 +88,13 @@ var Particle = /** @class */ (function () {
         }
         this.pos = newPos;
         this.vel = newVel;
-        // Reduce cooldown
-        if (this.cooldown > 0) {
-            this.cooldown--;
+        // Reduce cooldown distance
+        if (this.cooldownDist > 0) {
+            this.cooldownDist -= this.vel.getMagnitude();
         }
         // Set active if cooldown ends
-        if (this.cooldown <= 0 || this.state === "active") {
-            this.cooldown = 0;
+        if (this.cooldownDist <= 0 || this.state === "active") {
+            this.cooldownDist = 0;
             this.state = "active";
         }
     };
@@ -175,7 +175,7 @@ var Reaction = /** @class */ (function () {
             var formula = molFormula.formula;
             var coeff = molFormula.molCoeff;
             for (var i = 0; i < coeff; i++) {
-                producedParticles.push(createParticle(formula, reactionLocation, temperature, COOLDOWN));
+                producedParticles.push(createParticle(formula, reactionLocation, temperature, COOLDOWN_DIST));
             }
         }
         return producedParticles;
@@ -212,20 +212,20 @@ var Reaction = /** @class */ (function () {
             var formula = molFormula.formula;
             var coeff = molFormula.molCoeff;
             for (var i = 0; i < coeff; i++) {
-                producedParticles.push(createParticle(formula, reactionLocation, temperature, COOLDOWN));
+                producedParticles.push(createParticle(formula, reactionLocation, temperature, COOLDOWN_DIST));
             }
         }
         return producedParticles;
     };
     // Attepts both fwd and rev rxns, returns products if successful
-    Reaction.prototype.attemptReaction = function (intersectingParticles, particleCreationQueue, reactionLocation, temperature) {
+    Reaction.prototype.attemptReaction = function (intersectingParticles, particleCreationQueue, temperature) {
         // Attempt forward reaction
         var fwdConsumed = this.getFwdConsumedParticles(intersectingParticles);
         if (fwdConsumed !== null) {
             // Remove consumed particles      
             removeParticles(fwdConsumed);
             // Add produced particles
-            particleCreationQueue.push.apply(particleCreationQueue, this.getFwdProducedParticles(reactionLocation, temperature));
+            particleCreationQueue.push.apply(particleCreationQueue, this.getFwdProducedParticles(getAvgPos(fwdConsumed), temperature));
             return true;
         }
         // Attempt reverse reaction if reversible (fwd failed)
@@ -234,7 +234,7 @@ var Reaction = /** @class */ (function () {
             // Remove consumed particles      
             removeParticles(revConsumed);
             // Add produced particles
-            particleCreationQueue.push.apply(particleCreationQueue, this.getRevProducedParticles(reactionLocation, temperature));
+            particleCreationQueue.push.apply(particleCreationQueue, this.getRevProducedParticles(getAvgPos(revConsumed), temperature));
             return true;
         }
         return false;
@@ -271,15 +271,15 @@ function getParticleColor(formula) {
 function getRandPos(dimensions) {
     return new Vector(getRandInt(0, dimensions.width), getRandInt(0, dimensions.height));
 }
-function createParticle(formula, pos, temperature, cooldown) {
-    if (cooldown === void 0) { cooldown = 0; }
+function createParticle(formula, pos, temperature, cooldownDist) {
+    if (cooldownDist === void 0) { cooldownDist = 0; }
     var speedVec = new Vector(temperature, 0);
     var speedScaler = getRandFloat(1 - MAX_SPEED_SCALER, 1 + MAX_SPEED_SCALER); // Randomize speed
     var angle = getRandFloat(0, 2 * Math.PI);
-    var particle = new Particle(formula, getParticleColor(formula), pos, temperature, speedVec.getScaled(speedScaler).getRotated(angle));
-    if (cooldown !== 0) {
+    var particle = new Particle(formula, getParticleColor(formula), RADIUS, pos, temperature, speedVec.getScaled(speedScaler).getRotated(angle));
+    if (cooldownDist !== 0) {
         particle.state = "cooldown";
-        particle.cooldown = cooldown;
+        particle.cooldownDist = cooldownDist;
     }
     return particle;
 }
@@ -291,16 +291,32 @@ function removeParticles(particles) {
     }
 }
 function changeTemperature(particles, temperature) {
+    containerTemperature = temperature;
     for (var _i = 0, particles_2 = particles; _i < particles_2.length; _i++) {
         var particle = particles_2[_i];
         particle.changeTemperature(temperature);
     }
 }
+function getAvgPos(particles) {
+    var length = particles.length;
+    // Return zero vector if list has no particles
+    if (length === 0) {
+        return new Vector(0, 0);
+    }
+    var totalX = 0;
+    var totalY = 0;
+    for (var _i = 0, particles_3 = particles; _i < particles_3.length; _i++) {
+        var particle = particles_3[_i];
+        totalX += particle.pos.x;
+        totalY += particle.pos.y;
+    }
+    return new Vector(totalX / length, totalY / length);
+}
 // ==== TESTING FUNCTIONS ==================================
 function getAvgSpeed(particles) {
     var totalSpeed = 0;
-    for (var _i = 0, particles_3 = particles; _i < particles_3.length; _i++) {
-        var particle = particles_3[_i];
+    for (var _i = 0, particles_4 = particles; _i < particles_4.length; _i++) {
+        var particle = particles_4[_i];
         totalSpeed += particle.vel.getMagnitude();
     }
     return totalSpeed / particles.length;
@@ -313,7 +329,8 @@ var ctx = canvas.getContext("2d");
 var FPS = 60;
 var CANVAS_DIMENSIONS = canvas.getBoundingClientRect();
 // ==== CONSTANTS ==================================
-var COOLDOWN = 30;
+var RADIUS = 10;
+var COOLDOWN_DIST = 2 * RADIUS;
 var MAX_SPEED_SCALER = 0.5; // Between 0 (0 variation), and 1 (100% variation)
 // For color and formula name reference
 var formulaColorMap = {
@@ -325,8 +342,10 @@ var formulaColorMap = {
 var particleList = [];
 var particleCreationQueue = []; // Particles waiting to be added
 var reactionList = [];
+// Simulation container parameters
+var containerPaused = false; // Whether simulation is paused
 var containerTemperature = 2; // Avg speed
-for (var i = 0; i < 1; i++) {
+for (var i = 0; i < 10; i++) {
     particleList.push(createParticle("A", new Vector(400, 400), containerTemperature));
 }
 reactionList.push(new Reaction("rxn1", [{ formula: "A", molCoeff: 2 }], [{ formula: "B", molCoeff: 2 }], true));
@@ -340,7 +359,10 @@ function drawFrame() {
     }
 }
 function updateFrame() {
-    drawFrame();
+    // Do nothing if simulation is paused
+    if (containerPaused) {
+        return;
+    }
     // Add queue particles
     particleList.push.apply(particleList, particleCreationQueue);
     particleCreationQueue.length = 0; // Clears queue
@@ -383,20 +405,41 @@ function updateFrame() {
         // Check available reactions
         for (var _b = 0, reactionList_1 = reactionList; _b < reactionList_1.length; _b++) {
             var reaction = reactionList_1[_b];
-            var rxnSuccessful = reaction.attemptReaction(availableParticles, particleCreationQueue, particle1.pos, containerTemperature);
+            var rxnSuccessful = reaction.attemptReaction(availableParticles, particleCreationQueue, containerTemperature);
             if (rxnSuccessful) {
                 console.log("SUCCESSFUL REACTION");
                 break;
             }
         }
     }
+    drawFrame();
 }
 // Set frame rate
 setInterval(updateFrame, 1000 / FPS);
 canvas.addEventListener("mousedown", function (e) {
     var mousePos = getCursorPosition(e);
     var particle = createParticle("A", mousePos, containerTemperature);
-    // const particle = new Particle("A", "blue", mousePos, new Vector(1, 0))
     particleList.push(particle);
-    console.log(getAvgSpeed(particleList));
 });
+// ==================================================================================================
+// ==== Testing =====================================================================================
+// ==================================================================================================
+// ==== TEMPERATURE SLIDER ===============================
+var tempSlider = document.getElementById("temp-slider");
+tempSlider.oninput = function () {
+    var newTemp = 20 * this.value;
+    changeTemperature(particleList, newTemp);
+    changeTemperature(particleCreationQueue, newTemp);
+};
+// ==== PAUSE BUTTON ===============================
+var pauseButton = document.getElementById("pause-button");
+pauseButton.onclick = function () {
+    if (containerPaused) {
+        containerPaused = false;
+        pauseButton.innerText = "Pause";
+    }
+    else {
+        containerPaused = true;
+        pauseButton.innerText = "Unpause";
+    }
+};

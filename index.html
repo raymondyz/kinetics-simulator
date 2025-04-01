@@ -27,7 +27,7 @@
             id="amount-slider-A"
             type="range"
             min="0"
-            max="100"
+            max="200"
             value="10"
             step="0.1"
           />
@@ -37,14 +37,21 @@
             id="amount-slider-B"
             type="range"
             min="0"
-            max="100"
+            max="200"
             value="10"
             step="0.1"
           />
         </div>
-        <button class="button" id="pause-button">Pause</button>
+        <div>
+          <button class="button" id="pause-button">Unpause</button>
+          <button class="button" id="clear-graph-button">Clear Graph</button>
+        </div>
+        <div>
+          <canvas id="concentration-chart"></canvas>
+        </div>
       </div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="index.js"></script>
   </body>
 </html>

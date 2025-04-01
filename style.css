@@ -23,8 +23,9 @@ canvas {
 }
 
 .button {
-  width: 80px;
+  min-width: 80px;
   height: 40px;
+  padding: 0px 10px;
 
   border-radius: 5px;
   background: #d3d3d3;
@@ -83,4 +84,10 @@ canvas {
   border-radius: 50%;
   background: #04AA6D;
   cursor: pointer;
+}
+
+
+
+#concentration-chart {
+  height: 500px;
 }

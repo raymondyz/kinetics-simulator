@@ -465,8 +465,9 @@ function getAvgSpeed(particles: Particle[]): number {
 const canvas: any = document.getElementById("myCanvas");
 const ctx: any = canvas.getContext("2d");
 
-const FPS: number = 60;
+const FPS: number = 30;
 const CANVAS_DIMENSIONS: dimensions = canvas.getBoundingClientRect();
+const CHART_DATASET_SIZE = 200;
 
 // ==== CONSTANTS ==================================
 
@@ -487,7 +488,7 @@ const particleCreationQueue: Particle[] = []; // Particles waiting to be added
 const reactionList: Reaction[] = [];
 
 // Simulation container parameters
-let containerPaused: boolean = false // Whether simulation is paused
+let containerPaused: boolean = true // Whether simulation is paused
 let containerTemperature: number = 2 // Avg speed
 
 
@@ -510,31 +511,49 @@ function drawFrame(): void {
   }
 }
 
-function updateSliders(): void {
+function updateUI(): void {
+  const amountA = countSpecies(particleList, "A")
+  const amountB = countSpecies(particleList, "B")
+
   // Update temperature slider value
   tempSlider.value = containerTemperature
 
   // Update concentration slider values (writen weird b/c amounts change too quickly)
-  const diffA = amountSliderA.value - countSpecies(particleList, "A")
-  const diffB = amountSliderB.value - countSpecies(particleList, "B")
+  const diffA = amountSliderA.value - amountA
+  const diffB = amountSliderB.value - amountB
   const scaler = 0.08
 
   amountSliderA.value -= bound(diffA, -scaler*Math.abs(diffA), scaler*Math.abs(diffA))
   amountSliderB.value -= bound(diffB, -scaler*Math.abs(diffB), scaler*Math.abs(diffB))
 
-}
 
-function updateFrame(): void {
-  // Do nothing if simulation is paused
-  if (containerPaused) {
-    return
+  // Add chart data
+  const dataX = concentrationChart.data.labels
+  const dataA = concentrationChart.data.datasets[0].data
+  const dataB = concentrationChart.data.datasets[1].data
+
+  dataX.push("")
+  dataA.push(amountA)
+  dataB.push(amountB)
+
+  if (dataX.length > CHART_DATASET_SIZE) {
+    const numToRemove = dataX.length - CHART_DATASET_SIZE
+
+    concentrationChart.data.labels = dataX.slice(numToRemove)
+    concentrationChart.data.datasets[0].data = dataA.slice(numToRemove)
+    concentrationChart.data.datasets[1].data = dataB.slice(numToRemove)
   }
 
+  concentrationChart.update()
+
+}
+
+function updateBackgroundProcesses(){
   // Add queue particles
   particleList.push(...particleCreationQueue)
   particleCreationQueue.length = 0 // Clears queue
-
-  // Update particles
+  
+  // Update particle states
   let i = 0;
   while (i < particleList.length) {
     const particle = particleList[i];
@@ -544,9 +563,29 @@ function updateFrame(): void {
       particleList.splice(i, 1);
       continue;
     }
-
-    particle.update(canvas);
     i++;
+  }
+  
+}
+
+function updateFrame(): void {
+
+  // Updates even when paused
+  drawFrame()
+  updateBackgroundProcesses()
+  
+
+  // Do nothing if simulation is paused
+  if (containerPaused) {
+    return
+  }
+
+  updateUI()
+
+
+  // Update particle movements
+  for (const particle of particleList) {
+    particle.update(canvas)
   }
 
   // Check reactable collisions
@@ -590,10 +629,6 @@ function updateFrame(): void {
     }
 
   }
-
-  drawFrame()
-  updateSliders()
-
 }
 
 // Set frame rate
@@ -650,7 +685,7 @@ amountSliderB.oninput = function() {
 
 const pauseButton: any = document.getElementById("pause-button");
 
-pauseButton.onclick = function(){
+pauseButton.onclick = function() {
   if (containerPaused) {
     containerPaused = false
     pauseButton.innerText = "Pause"
@@ -660,3 +695,56 @@ pauseButton.onclick = function(){
     pauseButton.innerText = "Unpause"
   }
 }
+
+// ==== CLEAR GRAPH BUTTON ===============================
+
+const clearGraphButton: any = document.getElementById("clear-graph-button");
+
+clearGraphButton.onclick = function() {
+  concentrationChart.data.labels = []
+  concentrationChart.data.datasets[0].data = []
+  concentrationChart.data.datasets[1].data = []
+  concentrationChart.update()
+}
+
+
+
+// ==================================================================================================
+// ==== Testing: Graph ==============================================================================
+// ==================================================================================================
+
+const chartCtx = document.getElementById("concentration-chart");
+
+const config = {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: "[A]",
+        borderColor: "rgb(75, 83, 192)",
+        pointRadius: 0,
+        data: [],
+      },
+      {
+        label: "[B]",
+        borderColor: "rgb(192, 75, 75)",
+        pointRadius: 0,
+        data: [],
+      },
+    ],
+  },
+  options: {
+    animation: {
+        duration: 0
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        suggestedMax: 300
+      }
+    }
+}
+};
+
+const concentrationChart = new Chart(chartCtx, config);

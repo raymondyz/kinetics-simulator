@@ -361,8 +361,9 @@ function getAvgSpeed(particles) {
 // ==================================================================================================
 var canvas = document.getElementById("myCanvas");
 var ctx = canvas.getContext("2d");
-var FPS = 60;
+var FPS = 30;
 var CANVAS_DIMENSIONS = canvas.getBoundingClientRect();
+var CHART_DATASET_SIZE = 200;
 // ==== CONSTANTS ==================================
 var RADIUS = 10;
 var COOLDOWN_DIST = 2 * RADIUS;
@@ -378,7 +379,7 @@ var particleList = [];
 var particleCreationQueue = []; // Particles waiting to be added
 var reactionList = [];
 // Simulation container parameters
-var containerPaused = false; // Whether simulation is paused
+var containerPaused = true; // Whether simulation is paused
 var containerTemperature = 2; // Avg speed
 for (var i = 0; i < 10; i++) {
     particleList.push(createParticle("A", new Vector(400, 400), containerTemperature));
@@ -393,25 +394,37 @@ function drawFrame() {
         particle.draw(ctx);
     }
 }
-function updateSliders() {
+function updateUI() {
+    var amountA = countSpecies(particleList, "A");
+    var amountB = countSpecies(particleList, "B");
     // Update temperature slider value
     tempSlider.value = containerTemperature;
     // Update concentration slider values (writen weird b/c amounts change too quickly)
-    var diffA = amountSliderA.value - countSpecies(particleList, "A");
-    var diffB = amountSliderB.value - countSpecies(particleList, "B");
+    var diffA = amountSliderA.value - amountA;
+    var diffB = amountSliderB.value - amountB;
     var scaler = 0.08;
     amountSliderA.value -= bound(diffA, -scaler * Math.abs(diffA), scaler * Math.abs(diffA));
     amountSliderB.value -= bound(diffB, -scaler * Math.abs(diffB), scaler * Math.abs(diffB));
-}
-function updateFrame() {
-    // Do nothing if simulation is paused
-    if (containerPaused) {
-        return;
+    // Add chart data
+    var dataX = concentrationChart.data.labels;
+    var dataA = concentrationChart.data.datasets[0].data;
+    var dataB = concentrationChart.data.datasets[1].data;
+    dataX.push("");
+    dataA.push(amountA);
+    dataB.push(amountB);
+    if (dataX.length > CHART_DATASET_SIZE) {
+        var numToRemove = dataX.length - CHART_DATASET_SIZE;
+        concentrationChart.data.labels = dataX.slice(numToRemove);
+        concentrationChart.data.datasets[0].data = dataA.slice(numToRemove);
+        concentrationChart.data.datasets[1].data = dataB.slice(numToRemove);
     }
+    concentrationChart.update();
+}
+function updateBackgroundProcesses() {
     // Add queue particles
     particleList.push.apply(particleList, particleCreationQueue);
     particleCreationQueue.length = 0; // Clears queue
-    // Update particles
+    // Update particle states
     var i = 0;
     while (i < particleList.length) {
         var particle = particleList[i];
@@ -420,20 +433,34 @@ function updateFrame() {
             particleList.splice(i, 1);
             continue;
         }
-        particle.update(canvas);
         i++;
     }
-    // Check reactable collisions
+}
+function updateFrame() {
+    // Updates even when paused
+    drawFrame();
+    updateBackgroundProcesses();
+    // Do nothing if simulation is paused
+    if (containerPaused) {
+        return;
+    }
+    updateUI();
+    // Update particle movements
     for (var _i = 0, particleList_2 = particleList; _i < particleList_2.length; _i++) {
-        var particle1 = particleList_2[_i];
+        var particle = particleList_2[_i];
+        particle.update(canvas);
+    }
+    // Check reactable collisions
+    for (var _a = 0, particleList_3 = particleList; _a < particleList_3.length; _a++) {
+        var particle1 = particleList_3[_a];
         // Ignore if not active
         if (particle1.state !== "active") {
             continue;
         }
         // Find intersecting and available particles
         var availableParticles = [particle1];
-        for (var _a = 0, particleList_3 = particleList; _a < particleList_3.length; _a++) {
-            var particle2 = particleList_3[_a];
+        for (var _b = 0, particleList_4 = particleList; _b < particleList_4.length; _b++) {
+            var particle2 = particleList_4[_b];
             // Ignore if same particle
             if (particle2 === particle1) {
                 continue;
@@ -448,8 +475,8 @@ function updateFrame() {
             }
         }
         // Check available reactions
-        for (var _b = 0, reactionList_1 = reactionList; _b < reactionList_1.length; _b++) {
-            var reaction = reactionList_1[_b];
+        for (var _c = 0, reactionList_1 = reactionList; _c < reactionList_1.length; _c++) {
+            var reaction = reactionList_1[_c];
             var rxnSuccessful = reaction.attemptReaction(availableParticles, particleCreationQueue, containerTemperature);
             if (rxnSuccessful) {
                 console.log("SUCCESSFUL REACTION");
@@ -457,8 +484,6 @@ function updateFrame() {
             }
         }
     }
-    drawFrame();
-    updateSliders();
 }
 // Set frame rate
 setInterval(updateFrame, 1000 / FPS);
@@ -502,3 +527,47 @@ pauseButton.onclick = function () {
         pauseButton.innerText = "Unpause";
     }
 };
+// ==== CLEAR GRAPH BUTTON ===============================
+var clearGraphButton = document.getElementById("clear-graph-button");
+clearGraphButton.onclick = function () {
+    concentrationChart.data.labels = [];
+    concentrationChart.data.datasets[0].data = [];
+    concentrationChart.data.datasets[1].data = [];
+    concentrationChart.update();
+};
+// ==================================================================================================
+// ==== Testing: Graph ==============================================================================
+// ==================================================================================================
+var chartCtx = document.getElementById("concentration-chart");
+var config = {
+    type: "line",
+    data: {
+        labels: [],
+        datasets: [
+            {
+                label: "[A]",
+                borderColor: "rgb(75, 83, 192)",
+                pointRadius: 0,
+                data: [],
+            },
+            {
+                label: "[B]",
+                borderColor: "rgb(192, 75, 75)",
+                pointRadius: 0,
+                data: [],
+            },
+        ],
+    },
+    options: {
+        animation: {
+            duration: 0
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                suggestedMax: 300
+            }
+        }
+    }
+};
+var concentrationChart = new Chart(chartCtx, config);

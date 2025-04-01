@@ -337,6 +337,10 @@ function getCursorPosition(event: any): Vector {
   return new Vector(x, y);
 }
 
+function bound(value: number, min: number, max: number): number {
+  return Math.max(Math.min(value, max), min)
+}
+
 
 // ==== SIM FUNCTIONS ==================================
 
@@ -375,6 +379,34 @@ function removeParticles(particles: Particle[]): void {
   }
 }
 
+
+// BUG: VERY INACCURATE, many "removed particles" make it past filter
+function changeConcentration(targetAmount: number, formula: string): void {
+  const speciesParticles = particleList.filter(function(particle) {
+    return (particle.state !== "removed" && particle.formula === formula)
+  })
+
+  // If already have target number of species particles
+  if (speciesParticles.length === targetAmount) {
+    return
+  }
+
+  // If have more than target number of species particles, remove particles until equal
+  while (speciesParticles.length > targetAmount) {
+    speciesParticles[0].state = "removed"
+    speciesParticles.shift()
+  }
+
+  // If have less than target number of species particles, add particles until equal
+  while (speciesParticles.length < targetAmount) {
+    const particle = createParticle(formula, getRandPos(CANVAS_DIMENSIONS), containerTemperature)
+
+    // Add new particle to creation queue
+    speciesParticles.push(particle)
+    particleCreationQueue.push(particle)
+  }
+}
+
 function changeTemperature(particles: Particle[], temperature: number): void {
   containerTemperature = temperature;
   for (const particle of particles) {
@@ -399,6 +431,17 @@ function getAvgPos(particles: Particle[]): Vector {
   }
 
   return new Vector(totalX / length, totalY / length)
+}
+
+function countSpecies(particles: Particle[], formula: string): number {
+  let count = 0
+  for (const particle of particles) {
+    if (particle.state !== "removed" && particle.formula === formula) {
+      count += 1
+    }
+  }
+
+  return count
 }
 
 // ==== TESTING FUNCTIONS ==================================
@@ -467,7 +510,21 @@ function drawFrame(): void {
   }
 }
 
-function updateFrame(): void{
+function updateSliders(): void {
+  // Update temperature slider value
+  tempSlider.value = containerTemperature
+
+  // Update concentration slider values (writen weird b/c amounts change too quickly)
+  const diffA = amountSliderA.value - countSpecies(particleList, "A")
+  const diffB = amountSliderB.value - countSpecies(particleList, "B")
+  const scaler = 0.08
+
+  amountSliderA.value -= bound(diffA, -scaler*Math.abs(diffA), scaler*Math.abs(diffA))
+  amountSliderB.value -= bound(diffB, -scaler*Math.abs(diffB), scaler*Math.abs(diffB))
+
+}
+
+function updateFrame(): void {
   // Do nothing if simulation is paused
   if (containerPaused) {
     return
@@ -535,6 +592,7 @@ function updateFrame(): void{
   }
 
   drawFrame()
+  updateSliders()
 
 }
 
@@ -559,18 +617,38 @@ canvas.addEventListener("mousedown", function (e) {
 
 // ==== TEMPERATURE SLIDER ===============================
 
-var tempSlider: any = document.getElementById("temp-slider");
+const tempSlider: any = document.getElementById("temp-slider");
 
 tempSlider.oninput = function() {
-  const newTemp =  20*(this as any).value
+  const newTemp = (this as any).value
 
   changeTemperature(particleList, newTemp)
   changeTemperature(particleCreationQueue, newTemp)
 }
 
+// ==== CONCENTRATION SLIDER ===============================
+
+const amountSliderA: any = document.getElementById("amount-slider-A");
+
+amountSliderA.oninput = function() {
+  const newAmount = Math.round((this as any).value)
+  const formula = "A"
+
+  changeConcentration(newAmount, formula)
+}
+
+const amountSliderB: any = document.getElementById("amount-slider-B");
+
+amountSliderB.oninput = function() {
+  const newAmount = Math.round((this as any).value)
+  const formula = "B"
+
+  changeConcentration(newAmount, formula)
+}
+
 // ==== PAUSE BUTTON ===============================
 
-var pauseButton: any = document.getElementById("pause-button");
+const pauseButton: any = document.getElementById("pause-button");
 
 pauseButton.onclick = function(){
   if (containerPaused) {

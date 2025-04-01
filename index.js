@@ -259,6 +259,9 @@ function getCursorPosition(event) {
     var y = event.clientY - canvas.getBoundingClientRect().top;
     return new Vector(x, y);
 }
+function bound(value, min, max) {
+    return Math.max(Math.min(value, max), min);
+}
 // ==== SIM FUNCTIONS ==================================
 function getParticleColor(formula) {
     var COLOR_MAP = formulaColorMap;
@@ -290,6 +293,28 @@ function removeParticles(particles) {
         particle.state = "removed";
     }
 }
+// BUG: VERY INACCURATE, many "removed particles" make it past filter
+function changeConcentration(targetAmount, formula) {
+    var speciesParticles = particleList.filter(function (particle) {
+        return (particle.state !== "removed" && particle.formula === formula);
+    });
+    // If already have target number of species particles
+    if (speciesParticles.length === targetAmount) {
+        return;
+    }
+    // If have more than target number of species particles, remove particles until equal
+    while (speciesParticles.length > targetAmount) {
+        speciesParticles[0].state = "removed";
+        speciesParticles.shift();
+    }
+    // If have less than target number of species particles, add particles until equal
+    while (speciesParticles.length < targetAmount) {
+        var particle = createParticle(formula, getRandPos(CANVAS_DIMENSIONS), containerTemperature);
+        // Add new particle to creation queue
+        speciesParticles.push(particle);
+        particleCreationQueue.push(particle);
+    }
+}
 function changeTemperature(particles, temperature) {
     containerTemperature = temperature;
     for (var _i = 0, particles_2 = particles; _i < particles_2.length; _i++) {
@@ -312,11 +337,21 @@ function getAvgPos(particles) {
     }
     return new Vector(totalX / length, totalY / length);
 }
+function countSpecies(particles, formula) {
+    var count = 0;
+    for (var _i = 0, particles_4 = particles; _i < particles_4.length; _i++) {
+        var particle = particles_4[_i];
+        if (particle.state !== "removed" && particle.formula === formula) {
+            count += 1;
+        }
+    }
+    return count;
+}
 // ==== TESTING FUNCTIONS ==================================
 function getAvgSpeed(particles) {
     var totalSpeed = 0;
-    for (var _i = 0, particles_4 = particles; _i < particles_4.length; _i++) {
-        var particle = particles_4[_i];
+    for (var _i = 0, particles_5 = particles; _i < particles_5.length; _i++) {
+        var particle = particles_5[_i];
         totalSpeed += particle.vel.getMagnitude();
     }
     return totalSpeed / particles.length;
@@ -357,6 +392,16 @@ function drawFrame() {
         var particle = particleList_1[_i];
         particle.draw(ctx);
     }
+}
+function updateSliders() {
+    // Update temperature slider value
+    tempSlider.value = containerTemperature;
+    // Update concentration slider values (writen weird b/c amounts change too quickly)
+    var diffA = amountSliderA.value - countSpecies(particleList, "A");
+    var diffB = amountSliderB.value - countSpecies(particleList, "B");
+    var scaler = 0.08;
+    amountSliderA.value -= bound(diffA, -scaler * Math.abs(diffA), scaler * Math.abs(diffA));
+    amountSliderB.value -= bound(diffB, -scaler * Math.abs(diffB), scaler * Math.abs(diffB));
 }
 function updateFrame() {
     // Do nothing if simulation is paused
@@ -413,6 +458,7 @@ function updateFrame() {
         }
     }
     drawFrame();
+    updateSliders();
 }
 // Set frame rate
 setInterval(updateFrame, 1000 / FPS);
@@ -427,9 +473,22 @@ canvas.addEventListener("mousedown", function (e) {
 // ==== TEMPERATURE SLIDER ===============================
 var tempSlider = document.getElementById("temp-slider");
 tempSlider.oninput = function () {
-    var newTemp = 20 * this.value;
+    var newTemp = this.value;
     changeTemperature(particleList, newTemp);
     changeTemperature(particleCreationQueue, newTemp);
+};
+// ==== CONCENTRATION SLIDER ===============================
+var amountSliderA = document.getElementById("amount-slider-A");
+amountSliderA.oninput = function () {
+    var newAmount = Math.round(this.value);
+    var formula = "A";
+    changeConcentration(newAmount, formula);
+};
+var amountSliderB = document.getElementById("amount-slider-B");
+amountSliderB.oninput = function () {
+    var newAmount = Math.round(this.value);
+    var formula = "B";
+    changeConcentration(newAmount, formula);
 };
 // ==== PAUSE BUTTON ===============================
 var pauseButton = document.getElementById("pause-button");
